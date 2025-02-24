@@ -1,0 +1,15 @@
+[package]
+name = "eth-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.39.0", features = ["full"] }
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.105"
+actix-web = "4.9.0"
+reqwest = { version = "0.12.9", features = ["json"] }
+
+[[bin]]
+name = "eth-proxy"
+path = "app/server.rs"
