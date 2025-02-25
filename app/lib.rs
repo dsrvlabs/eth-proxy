@@ -1,5 +1,6 @@
 use std::time::{Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use log::debug;
 
 pub struct Endpoint {
     pub url: String,
@@ -24,11 +25,11 @@ impl Endpoint {
                 let body = response.text().await.unwrap_or_default();
                 let json: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
                 let syncing = json["result"]["syncing"].as_bool().unwrap_or(true);
-                println!("syncing: {} {:?} {:?}", self.url, syncing, duration);
+                debug!("syncing: {} {:?} {:?}", self.url, syncing, duration);
                 self.alive = !syncing;
             }
             _ => {
-                println!("syncing: {} false {:?}", self.url, duration);
+                debug!("syncing: {} false {:?}", self.url, duration);
                 self.alive = false;
             }
         }

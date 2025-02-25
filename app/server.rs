@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use env_logger;
+use log::{info, error};
 
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use reqwest::Client;
@@ -13,9 +15,9 @@ async fn proxy(req: HttpRequest, body: web::Bytes, data: web::Data<AppState>) ->
     let mut strategy = data.strategy.lock().unwrap();
     let endpoint = strategy.get_endpoint();
 
-    println!("headers: {:?}", req.headers());
-    println!("method: {:?}", req.method());
-    println!("body: {:?}", body);
+    info!("headers: {:?}", req.headers());
+    info!("method: {:?}", req.method());
+    info!("body: {:?}", body);
 
     let method = match *req.method() {
         actix_web::http::Method::GET => reqwest::Method::GET,
@@ -32,7 +34,7 @@ async fn proxy(req: HttpRequest, body: web::Bytes, data: web::Data<AppState>) ->
         return HttpResponse::ServiceUnavailable().body("No available endpoints");
     }
 
-    println!("url: {:?}", endpoint.unwrap().url);
+    info!("url: {:?}", endpoint.unwrap().url);
 
     let mut request = client.request(method, endpoint.unwrap().url.clone());
     for (key, value) in req.headers().iter() {
@@ -43,7 +45,7 @@ async fn proxy(req: HttpRequest, body: web::Bytes, data: web::Data<AppState>) ->
     let response = request.body(body).send().await;
     let duration = start.elapsed();
 
-    println!("Request duration: {:?}", duration);
+    info!("Request duration: {:?}", duration);
 
     match response {
         Ok(resp) => {
@@ -60,7 +62,7 @@ async fn proxy(req: HttpRequest, body: web::Bytes, data: web::Data<AppState>) ->
             return response.body(body);
         }
         Err(e) => {
-            eprintln!("Error forwarding request: {}", e);
+            error!("Error forwarding request: {}", e);
             // TODO: If failed. does this endpoint need to be failed?
             return HttpResponse::InternalServerError().finish();
         }
@@ -74,6 +76,9 @@ struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+    info!("Starting server");
+
     // TODO: Get from env
     let servers: [&str; 3] = [
         "http://34.22.74.19:8547",
@@ -92,7 +97,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for server in servers {
         let handle = tokio::spawn(async {
             loop {
-                println!("check");
                 let mut endpoint = Endpoint {
                     url: server.to_string(),
                     latency: 0,
