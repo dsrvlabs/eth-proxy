@@ -94,6 +94,7 @@ pub struct Endpoint {
 
 pub trait EndpointChooseStrategy: Send + Sync {
     fn get_endpoint(&mut self) -> Option<&Endpoint>;
+    fn available_count(&self) -> u32;
 }
 
 pub struct RoundRobinStrategy {
@@ -122,5 +123,8 @@ impl EndpointChooseStrategy for RoundRobinStrategy {
         }
 
         None
+    }
+    fn available_count(&self) -> u32 {
+        self.endpoints.iter().filter(|e| e.alive).count() as u32
     }
 }

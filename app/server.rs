@@ -29,6 +29,15 @@ struct Args {
     client_type: String,
 }
 
+async fn health(data: web::Data<AppState>) -> impl Responder {
+    let strategy = data.strategy.lock().unwrap();
+    let available_count = strategy.available_count();
+    if available_count == 0 {
+        return HttpResponse::ServiceUnavailable().body("No available endpoints");
+    }
+    HttpResponse::Ok().body(format!("Available endpoints: {}", available_count))
+}
+
 async fn proxy(req: HttpRequest, body: web::Bytes, data: web::Data<AppState>) -> impl Responder {
     let client = Client::new();
 
@@ -152,6 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting server on {}", args.bind_address);
     HttpServer::new(move || App::new()
         .app_data(web::Data::new(app_state.clone()))
+        .route("/healthz", web::route().to(health))
         .route("/{tail:.*}", web::route().to(proxy)))
         .bind(&args.bind_address)
         .unwrap()
