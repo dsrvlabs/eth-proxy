@@ -2,38 +2,94 @@ use std::time::{Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use log::debug;
 
+
+pub enum HealthCheckEnum {
+    Geth(GethHealthCheck),
+    OpNode(OpNodeHealthCheck),
+    Basic(BasicHealthCheck),
+}
+
+impl HealthCheck for HealthCheckEnum {
+    async fn health_check(&self, url: &str) -> bool {
+        match self {
+            HealthCheckEnum::Geth(health_check) => health_check.health_check(url).await,
+            HealthCheckEnum::OpNode(health_check) => health_check.health_check(url).await,
+            HealthCheckEnum::Basic(health_check) => health_check.health_check(url).await,
+        }
+    }
+}
+pub trait HealthCheck: Send + Sync {
+    async fn health_check(&self, url: &str) -> bool;
+}
+
+pub struct BasicHealthCheck {
+}
+
+impl HealthCheck for BasicHealthCheck {
+    async fn health_check(&self, url: &str) -> bool {
+        let client = reqwest::Client::new();
+        let response = client.get(format!("{}/health", url)).send().await;
+        match response {
+            Ok(response) => response.status().is_success(),
+            _ => false,
+        }
+    }
+}
+
+pub struct OpNodeHealthCheck {
+}
+
+impl HealthCheck for OpNodeHealthCheck {
+    async fn health_check(&self, url: &str) -> bool {
+        true
+    }
+}
+
+pub struct GethHealthCheck {
+}
+
+impl HealthCheck for GethHealthCheck {
+    async fn health_check(&self, url: &str) -> bool {
+        let req_body = r#"{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}"#;
+        let client = reqwest::Client::new();
+
+        let response = client.post(url).body(req_body).send().await;
+        let response = match response {
+            Ok(response) => response,
+            _ => return false,
+        };
+
+        let resp_body = response.text().await.unwrap_or_default();
+        let json: serde_json::Value = serde_json::from_str(&resp_body).unwrap_or_default();
+        let peer_count = json["result"].as_str().unwrap_or_default();
+        if peer_count.parse::<u64>().unwrap_or(0) <= 0 {
+            debug!("peer_count: {} {}", url, peer_count);
+            return false;
+        }
+
+        let req_body = r#"{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}"#;
+        let response = client.post(url).body(req_body).send().await;
+        let response = match response {
+            Ok(response) => response,
+            _ => {
+                debug!("syncing: err {}", url);
+                return false;
+            }
+        };
+
+        let json: serde_json::Value = response.json().await.unwrap_or_default();
+        let syncing = json["result"]["syncing"].as_bool().unwrap_or(true);
+
+        debug!("syncing: {} {}", url, syncing);
+        return !syncing;
+    }
+}
+
+#[derive(Clone)]
 pub struct Endpoint {
     pub url: String,
     pub latency: u64,
     pub alive: bool,
-}
-
-impl Endpoint {
-    // TODO: Consensus layer health check
-
-    pub async fn execution_layer_health_check(&mut self) {
-        let client = reqwest::Client::new();
-
-        let body = r#"{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}"#;
-
-        let start = Instant::now();
-        let response = client.post(&self.url).body(body).send().await;
-        let duration = start.elapsed();
-
-        match response {
-            Ok(response) => {
-                let body = response.text().await.unwrap_or_default();
-                let json: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
-                let syncing = json["result"]["syncing"].as_bool().unwrap_or(true);
-                debug!("syncing: {} {:?} {:?}", self.url, syncing, duration);
-                self.alive = !syncing;
-            }
-            _ => {
-                debug!("syncing: {} false {:?}", self.url, duration);
-                self.alive = false;
-            }
-        }
-    }
 }
 
 pub trait EndpointChooseStrategy: Send + Sync {
@@ -48,6 +104,10 @@ pub struct RoundRobinStrategy {
 impl RoundRobinStrategy {
     pub fn new(endpoints: Vec<Endpoint>) -> Self {
         Self { endpoints, current_index: AtomicUsize::new(0) }
+    }
+
+    pub fn get_endpoints_mut(&mut self) -> &mut Vec<Endpoint> {
+        &mut self.endpoints
     }
 }
 
