@@ -7,6 +7,7 @@ pub enum HealthCheckEnum {
     Geth(GethHealthCheck),
     OpNode(OpNodeHealthCheck),
     Basic(BasicHealthCheck),
+    Beacon(BeaconHealthCheck),
 }
 
 impl HealthCheck for HealthCheckEnum {
@@ -15,6 +16,7 @@ impl HealthCheck for HealthCheckEnum {
             HealthCheckEnum::Geth(health_check) => health_check.health_check(url).await,
             HealthCheckEnum::OpNode(health_check) => health_check.health_check(url).await,
             HealthCheckEnum::Basic(health_check) => health_check.health_check(url).await,
+            HealthCheckEnum::Beacon(health_check) => health_check.health_check(url).await,
         }
     }
 }
@@ -82,6 +84,42 @@ impl HealthCheck for GethHealthCheck {
 
         debug!("syncing: {} {}", url, syncing);
         return !syncing;
+    }
+}
+
+pub struct BeaconHealthCheck {
+}
+
+impl HealthCheck for BeaconHealthCheck {
+    async fn health_check(&self, url: &str) -> bool {
+        let client = reqwest::Client::new();
+        let response = client.get(format!("{}/eth/v1/node/peer_count", url)).send().await;
+        let response = match response {
+            Ok(response) => response,
+            _ => return false,
+        };
+
+        let json: serde_json::Value = response.json().await.unwrap_or_default();
+        let peer_count = json["data"]["connected"].as_u64().unwrap_or(0);
+        if peer_count <= 0 {
+            debug!("peer_count: {} {}", url, peer_count);
+            return false;
+        }
+
+        let response = client.get(format!("{}/eth/v1/node/syncing", url)).send().await;
+        let response = match response {
+            Ok(response) => response,
+            _ => return false,
+        };
+
+        let json: serde_json::Value = response.json().await.unwrap_or_default();
+        let syncing = json["data"]["syncing"].as_bool().unwrap_or(true);
+        if syncing {
+            debug!("syncing: {} {}", url, syncing);
+            return false;
+        }
+
+        true
     }
 }
 

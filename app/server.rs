@@ -8,7 +8,8 @@ use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use reqwest::Client;
 use clap::Parser;
 
-use eth_proxy::{Endpoint, EndpointChooseStrategy, RoundRobinStrategy, HealthCheck, GethHealthCheck, OpNodeHealthCheck, HealthCheckEnum, BasicHealthCheck};
+use eth_proxy::{Endpoint, EndpointChooseStrategy, RoundRobinStrategy, GethHealthCheck, HealthCheck, OpNodeHealthCheck, HealthCheckEnum, BasicHealthCheck, BeaconHealthCheck};
+
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -135,8 +136,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 info!("Health checking: {}", url);
                 let health_check = match client_type.as_str() {
-                    "geth" => HealthCheckEnum::Geth(GethHealthCheck {}),
                     "opnode" => HealthCheckEnum::OpNode(OpNodeHealthCheck {}),
+                    "el" => HealthCheckEnum::Geth(GethHealthCheck {}),
+                    "cl" => HealthCheckEnum::Beacon(BeaconHealthCheck {}),
                     _ => HealthCheckEnum::Basic(BasicHealthCheck {}),
                 };
 
